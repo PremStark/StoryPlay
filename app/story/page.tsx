@@ -11,7 +11,7 @@ export default function StoryLibrary() {
   return (
     <main className="library-shell">
       <nav className="library-nav">
-        <Link className="brand" href="/"><span className="brand-mark">✦</span> Storytime</Link>
+        <Link className="brand" href="/"><span className="brand-mark">✦</span> Persona</Link>
         <Link className="back-home" href="/"><span>←</span> Back to home</Link>
       </nav>
       <section className="library-hero">

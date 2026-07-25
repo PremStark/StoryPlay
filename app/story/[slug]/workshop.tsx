@@ -20,11 +20,11 @@ export default function StoryWorkshop({ story }: { story: Story }) {
 
   return (
     <main className="workshop-shell">
-      <nav className="library-nav workshop-nav"><Link className="brand" href="/"><span className="brand-mark">✦</span> Storytime</Link><Link className="back-home" href="/story"><span>←</span> Story library</Link></nav>
+      <nav className="library-nav workshop-nav"><Link className="brand" href="/"><span className="brand-mark">✦</span> Persona</Link><Link className="back-home" href="/story"><span>←</span> Story library</Link></nav>
       <div className="workshop">
         <aside className="selected-story">
           <p className="eyebrow"><span /> SELECTED STORY</p>
-          <div className={`selected-cover ${story.theme}`}><p className="library-number">YOUR EDITION</p><span className="book-mark">{story.mark}</span><div className="library-title"><h1>{story.title}</h1><i>{story.subtitle}</i></div><div className="cover-line" /><p className="book-author">A STORYTIME ADVENTURE</p></div>
+          <div className={`selected-cover ${story.theme}`}><p className="library-number">YOUR EDITION</p><span className="book-mark">{story.mark}</span><div className="library-title"><h1>{story.title}</h1><i>{story.subtitle}</i></div><div className="cover-line" /><p className="book-author">A PERSONA ADVENTURE</p></div>
           <p className="selected-copy">You are about to enter this world. Change one choice, and discover how the story unfolds from there.</p>
           <Link href="/story" className="choose-another">← Choose another book</Link>
         </aside>

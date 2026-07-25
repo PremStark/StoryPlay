@@ -34,8 +34,7 @@ export default function Home() {
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
       <nav className="topbar">
-        <a className="brand" href="#top" aria-label="Story Time Machine home"><span className="brand-mark"><Sparkle /></span> Storytime</a>
-        <div className="nav-links"><a href="#machine">The machine</a><a href="#how-it-works">How it works</a></div>
+        <a className="brand" href="#top" aria-label="Persona home"><span className="brand-mark"><Sparkle /></span> Persona</a>
         <button className="profile-button" aria-label="Open profile">P</button>
       </nav>
 
@@ -44,14 +43,14 @@ export default function Home() {
           <p className="eyebrow"><span /> YOUR STORY, REIMAGINED</p>
           <h1>What if the story<br /><em>changed with you?</em></h1>
           <p className="hero-copy">Step into the moment. Switch a character. See where the story takes you.</p>
-          <a className="scroll-cue" href="#machine">Explore your story <span>↓</span></a>
+          <a className="hero-cta" href="#machine"><span><Sparkle /></span> Get started <b>→</b></a>
         </div>
         <Link href="/story" className="book-link" aria-label="Open The Clockwork Garden story">
           <div className="story-book">
             <div className="book-pages" />
             <div className="book-cover">
               <div className="cover-glow" />
-              <p className="cover-kicker">A STORYTIME ORIGINAL</p>
+              <p className="cover-kicker">A PERSONA ORIGINAL</p>
               <div className="cover-moon">✦</div>
               <p className="cover-title">The<br /><i>Clockwork</i><br />Garden</p>
               <div className="cover-garden"><span className="vine vine-one" /><span className="vine vine-two" /><span className="flower flower-one">✦</span><span className="flower flower-two">✦</span></div>
@@ -95,7 +94,7 @@ export default function Home() {
 
       <section id="how-it-works" className="how-it-works">
         <p className="section-label">A NEW KIND OF STORY</p>
-        <div className="how-grid"><h2>Infinite paths.<br /><em>One adventure.</em></h2><p>Storytime uses AI to create a fresh chapter based on your character and the moment you choose. No two journeys unfold the same way.</p></div>
+        <div className="how-grid"><h2>Infinite paths.<br /><em>One adventure.</em></h2><p>Persona uses AI to create a fresh chapter based on your character and the moment you choose. No two journeys unfold the same way.</p></div>
       </section>
     </main>
   )
