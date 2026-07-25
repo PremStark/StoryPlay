@@ -7,7 +7,8 @@ type Story = { title: string; subtitle: string; theme: string; mark: string; cha
 
 export default function StoryWorkshop({ story }: { story: Story }) {
   const [character, setCharacter] = useState(story.characters[0])
-  const [personality, setPersonality] = useState(story.personalities[0])
+  const [personalityCharacter, setPersonalityCharacter] = useState(story.characters[0])
+  const [personalityPrompt, setPersonalityPrompt] = useState('')
   const [outcome, setOutcome] = useState('')
   const [newCharacter, setNewCharacter] = useState('')
   const [showAdd, setShowAdd] = useState(false)
@@ -32,7 +33,7 @@ export default function StoryWorkshop({ story }: { story: Story }) {
           <div className="form-section"><label htmlFor="character">01 — PICK YOUR CHARACTER</label><div className="select-wrap"><select id="character" value={character} onChange={(e) => setCharacter(e.target.value)}>{story.characters.map((item) => <option key={item}>{item}</option>)}</select></div><span className="field-hint">The story will follow {character}.</span></div>
           <div className="form-section"><label htmlFor="outcome">02 — CHANGE THE OUTCOME</label><textarea id="outcome" value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="e.g. What if they made a different choice at the turning point?" rows={3} /><span className="field-hint">Describe the moment you want to rewrite.</span></div>
           <div className="form-section add-section"><div className="form-label-row"><label>03 — ADD A CHARACTER</label><button type="button" onClick={() => setShowAdd(!showAdd)}>{showAdd ? 'Close' : '+ Add someone new'}</button></div>{showAdd && <input aria-label="New character name" value={newCharacter} onChange={(e) => setNewCharacter(e.target.value)} placeholder="Their name and role in the story" />}</div>
-          <div className="form-section"><label htmlFor="personality">04 — MODIFY THEIR PERSONALITY</label><div className="select-wrap"><select id="personality" value={personality} onChange={(e) => setPersonality(e.target.value)}>{story.personalities.map((item) => <option key={item}>{item}</option>)}</select></div><span className="field-hint">How should {character} show up in your version?</span></div>
+          <div className="form-section personality-section"><label htmlFor="personality-character">04 — MODIFY A CHARACTER&apos;S PERSONALITY</label><div className="select-wrap"><select id="personality-character" value={personalityCharacter} onChange={(e) => setPersonalityCharacter(e.target.value)}>{story.characters.map((item) => <option key={item}>{item}</option>)}</select></div><textarea id="personality-prompt" value={personalityPrompt} onChange={(e) => setPersonalityPrompt(e.target.value)} placeholder={`e.g. Make ${personalityCharacter} more bold, playful, and willing to take risks.`} rows={3} /><span className="field-hint">Describe how you want {personalityCharacter} to act in this version.</span></div>
           <button className="begin-button" onClick={beginStory}><span>✦</span> Start my new story <b>→</b></button>
           {message && <p className="workshop-message" role="status">{message}</p>}
         </section>
