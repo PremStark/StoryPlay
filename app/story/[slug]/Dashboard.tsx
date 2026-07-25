@@ -3,7 +3,19 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createSimulation, getSimulation, sceneStreamUrl, startSimulation, stopSimulation, type SimulationStatus, type StreamPayload } from '../../../lib/dracarys-api'
+import {
+  createSimulation,
+  getScenes,
+  getSimulation,
+  mediaUrl,
+  publishSimulation,
+  sceneStreamUrl,
+  startSimulation,
+  stopSimulation,
+  type SceneMedia,
+  type SimulationStatus,
+  type StreamPayload,
+} from '../../../lib/dracarys-api'
 
 type EventKind = 'world' | 'thought' | 'decision' | 'relationship' | 'effect'
 
@@ -56,9 +68,15 @@ function firstDialogue(payload: StreamPayload) {
   const dialogue = payload.screenplay?.dialogue?.[0]
   if (!dialogue) return null
   return {
-    actor: dialogue.character || dialogue.speaker || 'Character',
-    line: dialogue.text || dialogue.line || '',
+    actor: dialogue.speaker_name || dialogue.speaker_character_id || 'Narrator',
+    line: dialogue.text || '',
   }
+}
+
+function mergeMedia(current: SceneMedia[], incoming: SceneMedia[]) {
+  const byId = new Map(current.map((media) => [media.id, media]))
+  for (const media of incoming) byId.set(media.id, media)
+  return [...byId.values()]
 }
 
 function streamPayloadToEvent(payload: StreamPayload, fallbackCharacters: readonly string[]): SimulationEvent {
@@ -155,18 +173,24 @@ function streamPayloadToEvent(payload: StreamPayload, fallbackCharacters: readon
 
 export default function Dashboard({
   worldName,
+  bookInitRevisionId,
   theme,
   leadCharacter,
+  leadCharacterId,
   characters,
   outcome,
   personalityPrompt,
+  newCharacter,
 }: {
   worldName: string
+  bookInitRevisionId: string
   theme: string
   leadCharacter: string
+  leadCharacterId: string
   characters: readonly string[]
   outcome: string
   personalityPrompt: string
+  newCharacter: string
 }) {
   const router = useRouter()
   const [active, setActive] = useState(true)
@@ -180,6 +204,8 @@ export default function Dashboard({
   const [session, setSession] = useState<SimulationStatus | null>(null)
   const [connectionNote, setConnectionNote] = useState('Preparing backend session...')
   const [stats, setStats] = useState({ events: 0, updated: 0, relationships: 0, memories: 0 })
+  const [sceneMedia, setSceneMedia] = useState<SceneMedia[]>([])
+  const [publishing, setPublishing] = useState(false)
   const generatedTick = useRef(1)
   const seenStreamEvents = useRef(new Set<string>())
   const directive = outcome || `Explore what changes when ${leadCharacter} chooses a different path.`
@@ -193,9 +219,14 @@ export default function Dashboard({
       try {
         const promptParts = [directive, `Lead character: ${leadCharacter}.`]
         if (personalityPrompt.trim()) promptParts.push(`Personality change: ${personalityPrompt.trim()}`)
+        if (newCharacter.trim()) promptParts.push(`Introduce this new character: ${newCharacter.trim()}`)
         const prepared = await createSimulation({
           bookTitle: worldName,
+          bookInitRevisionId,
           prompt: promptParts.join(' '),
+          leadCharacterId,
+          personalityChange: personalityPrompt,
+          newCharacterName: newCharacter,
           maxTicks: 50,
           maxChapters: 5,
           chapterIntervalTicks: 10,
@@ -232,6 +263,7 @@ export default function Dashboard({
             memories: current.memories + (payload.event_type.includes('media') ? 1 : 0),
           }))
           if (nextEvent.actor && nextEvent.kind === 'thought') setThinking(nextEvent.actor)
+          if (payload.media) setSceneMedia((current) => mergeMedia(current, [payload.media as SceneMedia]))
         }
 
         const streamEvents = ['scene.detected', 'scene.status_changed', 'scene.screenplay_ready', 'media.task_requested', 'media.task_status', 'chapter.boundary_detected', 'chapter.completed']
@@ -267,13 +299,29 @@ export default function Dashboard({
       cancelled = true
       stream?.close()
     }
-  }, [characters, directive, leadCharacter, personalityPrompt, worldName])
+  }, [bookInitRevisionId, characters, directive, leadCharacter, leadCharacterId, newCharacter, personalityPrompt, worldName])
 
   useEffect(() => {
     if (!session?.id || offlineMode) return
+    const sessionId = session.id
+
+    async function reconcileScenes() {
+      try {
+        const snapshot = await getScenes(sessionId)
+        setSceneMedia((current) => mergeMedia(
+          current,
+          snapshot.scenes.flatMap((scene) => scene.media || []),
+        ))
+      } catch {
+        // SSE is the primary live path; a missed REST reconciliation should
+        // not mark the full simulation as disconnected.
+      }
+    }
+
+    void reconcileScenes()
     const interval = window.setInterval(async () => {
       try {
-        const status = await getSimulation(session.id)
+        const [status] = await Promise.all([getSimulation(sessionId), reconcileScenes()])
         setSession(status)
         setTick(status.current_tick)
         setStats((current) => ({
@@ -379,6 +427,19 @@ export default function Dashboard({
     router.push('/story')
   }
 
+  async function handlePublishSimulation() {
+    if (!session?.id || offlineMode || publishing) return
+    setPublishing(true)
+    try {
+      const publication = await publishSimulation(session.id, `${worldName}: ${directive.slice(0, 72)}`)
+      setConnectionNote(`Published to the marketplace as “${publication.title}”.`)
+    } catch (error) {
+      setConnectionNote(`Could not publish this run. ${error instanceof Error ? error.message : ''}`.trim())
+    } finally {
+      setPublishing(false)
+    }
+  }
+
   const agents = useMemo(
     () =>
       characters.slice(0, 4).map((name, index) => ({
@@ -403,7 +464,7 @@ export default function Dashboard({
         <div className="world-actions">
           <span className={`world-status ${active ? '' : 'paused'}`}><i /> {active ? 'SIMULATION RUNNING' : 'SIMULATION PAUSED'} - TICK {tick}</span>
           <button onClick={() => setVoiceOn(!voiceOn)}>{voiceOn ? 'Voice On' : 'Voice Off'}</button>
-          <button onClick={() => setActive(!active)}>{active ? 'Pause' : 'Resume'}</button>
+          <button onClick={handlePublishSimulation} disabled={!session || offlineMode || publishing}>{publishing ? 'Publishing…' : 'Publish version'}</button>
           <button onClick={handleStopSimulation} className="stop-simulation">Stop simulation</button>
         </div>
       </header>
@@ -441,6 +502,22 @@ export default function Dashboard({
             <small>CHARACTER AUDIO</small>
             <h3>{currentDialogue?.actor || 'No speaker yet'}</h3>
             <p>{currentDialogue?.line || 'Dialogue appears here when screenplay or character events arrive.'}</p>
+          </section>
+          <section className="voice-card scene-assets">
+            <small>SCENE MEDIA</small>
+            {sceneMedia.length === 0 ? (
+              <p>Generated panels and narration will appear here as scene jobs complete.</p>
+            ) : sceneMedia.map((media) => media.kind === 'image' ? (
+              // These binary artifacts can be served from the local FastAPI
+              // service or future user-configured object storage, so a native
+              // image element avoids locking the frontend to a static host allowlist.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={media.id} src={mediaUrl(media.uri)} alt="Generated comic scene" />
+            ) : (
+              <audio key={media.id} controls preload="metadata" src={mediaUrl(media.uri)}>
+                Generated scene narration.
+              </audio>
+            ))}
           </section>
         </aside>
 

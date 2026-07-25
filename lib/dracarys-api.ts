@@ -16,11 +16,46 @@ export type SimulationStatus = {
 export type CreateSimulationInput = {
   bookTitle: string
   prompt: string
+  bookInitRevisionId?: string
+  leadCharacterId?: string
+  personalityChange?: string
+  newCharacterName?: string
   timelineAnchor?: string
   maxTicks?: number
   maxChapters?: number
   chapterIntervalTicks?: number
 }
+
+export type BookMarketplaceItem = {
+  id: string
+  book_id: string | null
+  canonical_title: string
+  aliases: string[]
+  character_names: string[]
+  description: string
+  quality: 'draft' | 'reviewed' | 'canonical' | string
+  created_at: string | null
+}
+
+export type BookMarketplaceResponse = { books: BookMarketplaceItem[] }
+
+export type BookInit = {
+  id: string
+  book_id: string | null
+  canonical_title: string
+  aliases: string[]
+  quality: string
+  source_notes: string
+  content: {
+    id: string
+    name: string
+    timeline_anchors: Record<string, unknown>
+    characters: Array<{ id: string; name: string; profile?: { personality_traits?: string[] } }>
+  }
+}
+
+export type BookInitializationResponse = { cache_hit: boolean; book_init: BookInit }
+export type Publication = { id: string; source_session_id: string; title: string; slug: string; status: string; published_at: string | null }
 
 export type SceneMedia = {
   id: string
@@ -38,7 +73,7 @@ export type SceneMedia = {
 
 export type SceneProjection = {
   status: string
-  scene?: {
+  scene: {
     scene_id: string
     scene_number: number
     summary: string
@@ -48,11 +83,21 @@ export type SceneProjection = {
     title?: string
     logline?: string
     narration?: string
-    dialogue?: Array<{ character?: string; speaker?: string; text?: string; line?: string }>
-    shots?: Array<{ shot_id?: string; description?: string }>
+    dialogue?: Array<{
+      speaker_character_id?: string
+      speaker_name?: string
+      text?: string
+      delivery?: string
+    }>
+    shots?: Array<{ id?: string; description?: string }>
   } | null
   media?: SceneMedia[]
   updated_at?: string
+}
+
+export type TimelineScenesResponse = {
+  session_id: string
+  scenes: SceneProjection[]
 }
 
 export type StreamPayload = {
@@ -104,13 +149,43 @@ export function createSimulation(input: CreateSimulationInput) {
     method: 'POST',
     body: JSON.stringify({
       book_title: input.bookTitle,
+      book_init_revision_id: input.bookInitRevisionId,
       prompt: input.prompt,
+      lead_character_id: input.leadCharacterId || '',
+      personality_change: input.personalityChange || '',
+      new_character_name: input.newCharacterName || '',
       timeline_anchor: input.timelineAnchor || '',
       max_ticks: input.maxTicks || 50,
       max_chapters: input.maxChapters || 5,
       chapter_interval_ticks: input.chapterIntervalTicks || 10,
       ending_condition: 'auto',
     }),
+  })
+}
+
+export function listBooks() {
+  return apiJson<BookMarketplaceResponse>('/books')
+}
+
+export function getBook(bookInitId: string) {
+  return apiJson<BookInit>(`/books/${encodeURIComponent(bookInitId)}`)
+}
+
+export function initializeBook(title: string) {
+  return apiJson<BookInitializationResponse>('/books/initialize', {
+    method: 'POST',
+    body: JSON.stringify({ title }),
+  })
+}
+
+export function rebuildBook(bookInitId: string) {
+  return apiJson<BookInit>(`/books/${encodeURIComponent(bookInitId)}/rebuild`, { method: 'POST' })
+}
+
+export function publishSimulation(sessionId: string, title: string) {
+  return apiJson<Publication>('/publications', {
+    method: 'POST',
+    body: JSON.stringify({ session_id: sessionId, title }),
   })
 }
 
@@ -127,7 +202,7 @@ export function getSimulation(sessionId: string) {
 }
 
 export function getScenes(sessionId: string) {
-  return apiJson<SceneProjection[]>(`/timeline/${sessionId}/scenes`)
+  return apiJson<TimelineScenesResponse>(`/timeline/${sessionId}/scenes`)
 }
 
 export function sceneStreamUrl(sessionId: string) {
