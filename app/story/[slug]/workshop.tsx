@@ -20,8 +20,8 @@ export default function StoryWorkshop({ story }: { story: Story }) {
     setView('boot')
   }
 
-  if (view === 'boot') return <WorldBootSequence worldName={story.title} onComplete={() => setView('dashboard')} />
-  if (view === 'dashboard') return <Dashboard worldName={story.title} leadCharacter={character} characters={story.characters} outcome={outcome} personalityPrompt={personalityPrompt} />
+  if (view === 'boot') return <WorldBootSequence worldName={story.title} theme={story.theme} onComplete={() => setView('dashboard')} />
+  if (view === 'dashboard') return <Dashboard worldName={story.title} theme={story.theme} leadCharacter={character} characters={story.characters} outcome={outcome} personalityPrompt={personalityPrompt} />
 
   return (
     <main className="workshop-shell">

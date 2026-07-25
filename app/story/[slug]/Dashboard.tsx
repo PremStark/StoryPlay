@@ -1,6 +1,7 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 type EventKind = 'world' | 'thought' | 'decision' | 'relationship' | 'effect'
@@ -55,12 +56,14 @@ function eventMarker(kind: EventKind) {
 
 export default function Dashboard({
   worldName,
+  theme,
   leadCharacter,
   characters,
   outcome,
   personalityPrompt,
 }: {
   worldName: string
+  theme: string
   leadCharacter: string
   characters: readonly string[]
   outcome: string
@@ -193,7 +196,7 @@ export default function Dashboard({
   )
 
   return (
-    <main className="world-shell">
+    <main className={`world-shell world-theme-${theme}`}>
       <div className="world-noise" />
       <header className="world-header">
         <div className="world-brand">
@@ -207,6 +210,7 @@ export default function Dashboard({
           <span className={`world-status ${active ? '' : 'paused'}`}><i /> {active ? 'SIMULATION RUNNING' : 'SIMULATION PAUSED'} - TICK {tick}</span>
           <button onClick={() => setVoiceOn(!voiceOn)}>{voiceOn ? 'Voice On' : 'Voice Off'}</button>
           <button onClick={() => setActive(!active)}>{active ? 'Pause' : 'Resume'}</button>
+          <Link href="/story" className="stop-simulation">Stop simulation</Link>
         </div>
       </header>
 

@@ -46,3 +46,47 @@ button { cursor: pointer; }
 .voice-card small { color: #a998fb; font-size: 8px; font-weight: 700; letter-spacing: 1.2px; }
 .voice-card h3 { margin: 9px 0 6px; color: #f0edf9; font-size: 13px; }
 .voice-card p { margin: 0; color: #aaa2bf; font-family: Georgia, serif; font-size: 12px; line-height: 1.5; }
+
+.simulation-exit,.stop-simulation { position: relative; z-index: 2; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #ffffff22; border-radius: 7px; color: #f4f2ff; background: #ffffff0b; text-decoration: none; font-size: 10px; font-weight: 700; }
+.simulation-exit { position: absolute; top: 26px; right: 30px; padding: 9px 12px; }
+.stop-simulation { padding: 9px 12px; }
+.simulation-exit:hover,.stop-simulation:hover { border-color: #ffffff48; background: #ffffff16; }
+.world-theme-magic { --world-accent: #8d76ff; --world-accent-soft: #8d76ff2b; --world-secondary: #f0c96a; background: radial-gradient(circle at 76% 13%, #5d42b358, transparent 30%), radial-gradient(circle at 12% 84%, #c89b3c2f, transparent 28%), #12101c; }
+.world-theme-thrones { --world-accent: #8fb0c9; --world-accent-soft: #8fb0c92b; --world-secondary: #d2b676; background: radial-gradient(circle at 76% 13%, #5d728758, transparent 30%), radial-gradient(circle at 13% 78%, #78613b38, transparent 30%), #10151b; }
+.world-theme-fight { --world-accent: #e24f69; --world-accent-soft: #e24f692b; --world-secondary: #f2b17c; background: radial-gradient(circle at 78% 16%, #7e173258, transparent 30%), radial-gradient(circle at 15% 84%, #39222e75, transparent 31%), #160f14; }
+.world-theme-shawshank { --world-accent: #6fb8c7; --world-accent-soft: #6fb8c72b; --world-secondary: #e0b869; background: radial-gradient(circle at 74% 13%, #266a7958, transparent 29%), radial-gradient(circle at 12% 82%, #c08b3e2d, transparent 30%), #10191d; }
+.world-theme-magic .world-brand > span,.world-theme-magic .event-marker,.world-theme-magic .world-actions button { background: #6d56d8; }
+.world-theme-thrones .world-brand > span,.world-theme-thrones .event-marker,.world-theme-thrones .world-actions button { background: #496578; }
+.world-theme-fight .world-brand > span,.world-theme-fight .event-marker,.world-theme-fight .world-actions button { background: #b6384f; }
+.world-theme-shawshank .world-brand > span,.world-theme-shawshank .event-marker,.world-theme-shawshank .world-actions button { background: #367987; }
+.world-theme-magic .world-agent.thinking,.world-theme-magic .event-card:hover { border-color: #8d76ff88; }
+.world-theme-thrones .world-agent.thinking,.world-theme-thrones .event-card:hover { border-color: #8fb0c988; }
+.world-theme-fight .world-agent.thinking,.world-theme-fight .event-card:hover { border-color: #e24f6988; }
+.world-theme-shawshank .world-agent.thinking,.world-theme-shawshank .event-card:hover { border-color: #6fb8c788; }
+.world-theme-magic .directive-card,.world-theme-magic .voice-card,.world-theme-magic .event-card blockquote { border-color: #8d76ff; }
+.world-theme-thrones .directive-card,.world-theme-thrones .voice-card,.world-theme-thrones .event-card blockquote { border-color: #8fb0c9; }
+.world-theme-fight .directive-card,.world-theme-fight .voice-card,.world-theme-fight .event-card blockquote { border-color: #e24f69; }
+.world-theme-shawshank .directive-card,.world-theme-shawshank .voice-card,.world-theme-shawshank .event-card blockquote { border-color: #6fb8c7; }
+
+.world-shell .world-agent.violet,.world-shell .world-agent.amber,.world-shell .world-agent.blue,.world-shell .world-agent.rose { color: #f4f2ff; }
+.world-theme-magic .world-agent.violet { background: linear-gradient(135deg, #4d358f, #7558c9); border-color: #a28dff55; }
+.world-theme-magic .world-agent.amber { background: linear-gradient(135deg, #574226, #a77a35); border-color: #f0c96a55; }
+.world-theme-magic .world-agent.blue { background: linear-gradient(135deg, #234c66, #3f87a5); border-color: #7fd6ff55; }
+.world-theme-magic .world-agent.rose { background: linear-gradient(135deg, #5f3152, #9b5b83); border-color: #f0a8d155; }
+.world-theme-thrones .world-agent.violet { background: linear-gradient(135deg, #24313c, #40586a); border-color: #9eb9cc55; }
+.world-theme-thrones .world-agent.amber { background: linear-gradient(135deg, #4a3c28, #8a7042); border-color: #d2b67655; }
+.world-theme-thrones .world-agent.blue { background: linear-gradient(135deg, #1f3e50, #4c7890); border-color: #9fcbe255; }
+.world-theme-thrones .world-agent.rose { background: linear-gradient(135deg, #372b32, #72515f); border-color: #c69aaa55; }
+.world-theme-fight .world-agent.violet { background: linear-gradient(135deg, #4c1624, #9c2d45); border-color: #e24f6955; }
+.world-theme-fight .world-agent.amber { background: linear-gradient(135deg, #5f3521, #b86a39); border-color: #f2b17c55; }
+.world-theme-fight .world-agent.blue { background: linear-gradient(135deg, #2c2f3c, #5c6576); border-color: #a8b0bf55; }
+.world-theme-fight .world-agent.rose { background: linear-gradient(135deg, #2d1c25, #6f3348); border-color: #c7608255; }
+.world-theme-shawshank .world-agent.violet { background: linear-gradient(135deg, #1c4d58, #3d8793); border-color: #7fd5e455; }
+.world-theme-shawshank .world-agent.amber { background: linear-gradient(135deg, #574225, #a77834); border-color: #e0b86955; }
+.world-theme-shawshank .world-agent.blue { background: linear-gradient(135deg, #24445a, #4d778e); border-color: #91c6df55; }
+.world-theme-shawshank .world-agent.rose { background: linear-gradient(135deg, #39403d, #6f7f75); border-color: #b4c6bd55; }
+.world-theme-magic .world-agent.violet > span { background: #2c1f55; color: #d8ceff; }.world-theme-magic .world-agent.amber > span { background: #3b2a16; color: #ffe1a1; }.world-theme-magic .world-agent.blue > span { background: #163447; color: #bdeeff; }.world-theme-magic .world-agent.rose > span { background: #3d2035; color: #ffd0e8; }
+.world-theme-thrones .world-agent.violet > span { background: #17232c; color: #c6dced; }.world-theme-thrones .world-agent.amber > span { background: #302818; color: #ead39a; }.world-theme-thrones .world-agent.blue > span { background: #162f3e; color: #c7ecff; }.world-theme-thrones .world-agent.rose > span { background: #251b21; color: #e4b9c8; }
+.world-theme-fight .world-agent.violet > span { background: #2e0f18; color: #ffc1cf; }.world-theme-fight .world-agent.amber > span { background: #3b2115; color: #ffd0a6; }.world-theme-fight .world-agent.blue > span { background: #1e222c; color: #d6dbe5; }.world-theme-fight .world-agent.rose > span { background: #21141b; color: #f3aac1; }
+.world-theme-shawshank .world-agent.violet > span { background: #13313a; color: #c0f1fb; }.world-theme-shawshank .world-agent.amber > span { background: #372915; color: #ffe0a1; }.world-theme-shawshank .world-agent.blue > span { background: #183044; color: #cdeaff; }.world-theme-shawshank .world-agent.rose > span { background: #242e2a; color: #d5e5dc; }
+.world-theme-magic .world-agent > i { background: #e9d176; }.world-theme-thrones .world-agent > i { background: #9eb9cc; }.world-theme-fight .world-agent > i { background: #e24f69; }.world-theme-shawshank .world-agent > i { background: #8fcfba; }
