@@ -1,20 +1,29 @@
 'use client'
 
 import { AnimatePresence, motion } from 'framer-motion'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createSimulation,
+  getFinalOutput,
+  getFinalVideoJob,
+  getScenePlayback,
   getScenes,
   getSimulation,
   mediaUrl,
   publishSimulation,
+  renderFinalVideo,
   sceneStreamUrl,
   startSimulation,
   stopSimulation,
   type SceneMedia,
+  type ScenePlaybackManifest,
+  type SceneProjection,
   type SimulationStatus,
   type StreamPayload,
+  type FinalOutputBundle,
+  type Publication,
+  type VideoRenderJob,
 } from '../../../lib/dracarys-api'
 
 type EventKind = 'world' | 'thought' | 'decision' | 'relationship' | 'effect'
@@ -79,16 +88,30 @@ function mergeMedia(current: SceneMedia[], incoming: SceneMedia[]) {
   return [...byId.values()]
 }
 
+function mergeScenes(current: SceneProjection[], incoming: SceneProjection[]) {
+  const merged = new Map(current.map((scene) => [scene.scene.scene_id, scene]))
+  for (const scene of incoming) merged.set(scene.scene.scene_id, scene)
+  return [...merged.values()].sort((left, right) => left.scene.scene_number - right.scene.scene_number)
+}
+
+function sceneStatusLabel(status: string) {
+  return status.replaceAll('_', ' ')
+}
+
+function isScenePending(status: string) {
+  return !['ready_for_frontend', 'published', 'failed', 'cancelled'].includes(status)
+}
+
 function streamPayloadToEvent(payload: StreamPayload, fallbackCharacters: readonly string[]): SimulationEvent {
   const affected = uniqueNames(fallbackCharacters.slice(0, 4))
 
-  if (payload.event_type === 'scene.detected') {
+  if (payload.event_type === 'scene.ready') {
     return {
       id: payload.event_id,
       kind: 'world',
       actor: 'Showrunner',
-      title: `Scene ${payload.scene_number || ''} detected`.trim(),
-      text: payload.summary || 'A causal cluster became important enough to become a scene.',
+      title: `Scene ${payload.scene_number || ''} committed`.trim(),
+      text: payload.summary || 'The Showrunner committed a scene after resolving actions and state changes.',
       affected,
     }
   }
@@ -139,28 +162,6 @@ function streamPayloadToEvent(payload: StreamPayload, fallbackCharacters: readon
     }
   }
 
-  if (payload.event_type === 'chapter.completed') {
-    return {
-      id: payload.event_id,
-      kind: 'effect',
-      actor: 'Editor',
-      title: `Chapter ${payload.chapter_number || ''} completed`.trim(),
-      text: `Chapter sealed at tick ${payload.ending_tick || 'unknown'} with ${payload.scene_ids?.length || 0} scenes.`,
-      affected,
-    }
-  }
-
-  if (payload.event_type === 'chapter.boundary_detected') {
-    return {
-      id: payload.event_id,
-      kind: 'world',
-      actor: 'Showrunner',
-      title: `Chapter ${payload.chapter_number || ''} boundary`.trim(),
-      text: 'The simulation found a chapter boundary. More scene work may still arrive.',
-      affected,
-    }
-  }
-
   return {
     id: payload.event_id,
     kind: 'world',
@@ -181,6 +182,9 @@ export default function Dashboard({
   outcome,
   personalityPrompt,
   newCharacter,
+  branchPlanId,
+  initialSession,
+  maxScenes,
 }: {
   worldName: string
   bookInitRevisionId: string
@@ -191,8 +195,12 @@ export default function Dashboard({
   outcome: string
   personalityPrompt: string
   newCharacter: string
+  /** A user-confirmed Pydantic branch plan to apply to this run. */
+  branchPlanId?: string
+  /** A verified branch plan already created this session. */
+  initialSession?: SimulationStatus
+  maxScenes?: number
 }) {
-  const router = useRouter()
   const [active, setActive] = useState(true)
   const [voiceOn, setVoiceOn] = useState(false)
   const [events, setEvents] = useState<SimulationEvent[]>([])
@@ -204,8 +212,15 @@ export default function Dashboard({
   const [session, setSession] = useState<SimulationStatus | null>(null)
   const [connectionNote, setConnectionNote] = useState('Preparing backend session...')
   const [stats, setStats] = useState({ events: 0, updated: 0, relationships: 0, memories: 0 })
-  const [sceneMedia, setSceneMedia] = useState<SceneMedia[]>([])
+  const [scenes, setScenes] = useState<SceneProjection[]>([])
+  const [playback, setPlayback] = useState<ScenePlaybackManifest | null>(null)
+  const [finalOutput, setFinalOutput] = useState<FinalOutputBundle | null>(null)
+  const [videoJob, setVideoJob] = useState<VideoRenderJob | null>(null)
+  const [assemblingVideo, setAssemblingVideo] = useState(false)
+  const [playbackIndex, setPlaybackIndex] = useState(0)
+  const [storyPlaybackActive, setStoryPlaybackActive] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [publication, setPublication] = useState<Publication | null>(null)
   const generatedTick = useRef(1)
   const seenStreamEvents = useRef(new Set<string>())
   const directive = outcome || `Explore what changes when ${leadCharacter} chooses a different path.`
@@ -217,20 +232,25 @@ export default function Dashboard({
 
     async function bootBackendSession() {
       try {
-        const promptParts = [directive, `Lead character: ${leadCharacter}.`]
-        if (personalityPrompt.trim()) promptParts.push(`Personality change: ${personalityPrompt.trim()}`)
-        if (newCharacter.trim()) promptParts.push(`Introduce this new character: ${newCharacter.trim()}`)
-        const prepared = await createSimulation({
-          bookTitle: worldName,
-          bookInitRevisionId,
-          prompt: promptParts.join(' '),
-          leadCharacterId,
-          personalityChange: personalityPrompt,
-          newCharacterName: newCharacter,
-          maxTicks: 50,
-          maxChapters: 5,
-          chapterIntervalTicks: 10,
-        })
+        // A confirmed branch plan owns the session and its state patch. The
+        // legacy direct-create route remains as a backwards-compatible path
+        // for older BookInit records.
+        const prepared = initialSession || await (async () => {
+          const promptParts = [directive, `Lead character: ${leadCharacter}.`]
+          if (personalityPrompt.trim()) promptParts.push(`Personality change: ${personalityPrompt.trim()}`)
+          if (newCharacter.trim()) promptParts.push(`Introduce this new character: ${newCharacter.trim()}`)
+          return createSimulation({
+            bookTitle: worldName,
+            bookInitRevisionId,
+            branchPlanId,
+            prompt: promptParts.join(' '),
+            leadCharacterId,
+            personalityChange: personalityPrompt,
+            newCharacterName: newCharacter,
+            maxTicks: 500,
+            maxScenes,
+          })
+        })()
 
         if (cancelled) return
         setSession(prepared)
@@ -259,14 +279,27 @@ export default function Dashboard({
           setStats((current) => ({
             events: current.events + 1,
             updated: current.updated + (payload.event_type.includes('screenplay') || payload.event_type.includes('status') ? 1 : 0),
-            relationships: current.relationships + (payload.event_type.includes('chapter') ? 1 : 0),
+            relationships: current.relationships,
             memories: current.memories + (payload.event_type.includes('media') ? 1 : 0),
           }))
           if (nextEvent.actor && nextEvent.kind === 'thought') setThinking(nextEvent.actor)
-          if (payload.media) setSceneMedia((current) => mergeMedia(current, [payload.media as SceneMedia]))
+          if (payload.scene_id) {
+            setScenes((current) => {
+              const known = current.find((scene) => scene.scene.scene_id === payload.scene_id)
+              const sceneNumber = payload.scene_number || known?.scene.scene_number || current.length + 1
+              const next: SceneProjection = {
+                status: payload.status || (payload.event_type === 'scene.screenplay_ready' ? 'screenplay_ready' : known?.status || 'detected'),
+                scene: known?.scene || { scene_id: payload.scene_id!, scene_number: sceneNumber, summary: payload.summary || 'A new scene is being produced.' },
+                screenplay: payload.screenplay || known?.screenplay || null,
+                media: payload.media ? mergeMedia(known?.media || [], [payload.media as SceneMedia]) : known?.media || [],
+                updated_at: payload.created_at || known?.updated_at,
+              }
+              return mergeScenes(current.filter((scene) => scene.scene.scene_id !== payload.scene_id), [next])
+            })
+          }
         }
 
-        const streamEvents = ['scene.detected', 'scene.status_changed', 'scene.screenplay_ready', 'media.task_requested', 'media.task_status', 'chapter.boundary_detected', 'chapter.completed']
+        const streamEvents = ['scene.ready', 'scene.status_changed', 'scene.screenplay_ready', 'media.task_requested', 'media.task_status']
         streamEvents.forEach((eventName) => stream?.addEventListener(eventName, handleStreamMessage as EventListener))
         stream.onerror = () => setConnectionNote('Stream disconnected. Browser will retry; REST status keeps reconciling.')
 
@@ -299,7 +332,7 @@ export default function Dashboard({
       cancelled = true
       stream?.close()
     }
-  }, [bookInitRevisionId, characters, directive, leadCharacter, leadCharacterId, newCharacter, personalityPrompt, worldName])
+  }, [bookInitRevisionId, branchPlanId, characters, directive, initialSession, leadCharacter, leadCharacterId, maxScenes, newCharacter, personalityPrompt, worldName])
 
   useEffect(() => {
     if (!session?.id || offlineMode) return
@@ -308,20 +341,41 @@ export default function Dashboard({
     async function reconcileScenes() {
       try {
         const snapshot = await getScenes(sessionId)
-        setSceneMedia((current) => mergeMedia(
-          current,
-          snapshot.scenes.flatMap((scene) => scene.media || []),
-        ))
+        setScenes(snapshot.scenes)
       } catch {
         // SSE is the primary live path; a missed REST reconciliation should
         // not mark the full simulation as disconnected.
       }
     }
 
+    async function reconcilePlayback() {
+      try {
+        setPlayback(await getScenePlayback(sessionId))
+      } catch {
+        // Playback is an optional final-output projection. Scene cards remain
+        // available even while a backend is still generating it.
+      }
+    }
+
+    async function reconcileFinalOutput() {
+      try {
+        const output = await getFinalOutput(sessionId)
+        setFinalOutput(output)
+        if (videoJob && ['queued', 'running'].includes(videoJob.status)) {
+          setVideoJob(await getFinalVideoJob(videoJob.id))
+        }
+      } catch {
+        // Final outputs are only complete after the run is terminal; scene
+        // cards still provide useful incremental progress in the meantime.
+      }
+    }
+
     void reconcileScenes()
+    void reconcilePlayback()
+    void reconcileFinalOutput()
     const interval = window.setInterval(async () => {
       try {
-        const [status] = await Promise.all([getSimulation(sessionId), reconcileScenes()])
+        const [status] = await Promise.all([getSimulation(sessionId), reconcileScenes(), reconcilePlayback(), reconcileFinalOutput()])
         setSession(status)
         setTick(status.current_tick)
         setStats((current) => ({
@@ -337,7 +391,7 @@ export default function Dashboard({
     }, 3000)
 
     return () => window.clearInterval(interval)
-  }, [offlineMode, session?.id])
+  }, [offlineMode, session?.id, videoJob])
 
   useEffect(() => {
     if (!active || !seeded || !offlineMode) return
@@ -419,25 +473,65 @@ export default function Dashboard({
   async function handleStopSimulation() {
     if (session?.id && !offlineMode) {
       try {
-        await stopSimulation(session.id)
+        const stopped = await stopSimulation(session.id)
+        setSession(stopped)
+        setActive(false)
+        setConnectionNote('Simulation stopped. Waiting for any already-queued scenes to finish.')
       } catch {
         // Navigating away is still the intended user action.
       }
     }
-    router.push('/story')
   }
 
   async function handlePublishSimulation() {
-    if (!session?.id || offlineMode || publishing) return
+    if (!canPublish || publishing) return
     setPublishing(true)
     try {
       const publication = await publishSimulation(session.id, `${worldName}: ${directive.slice(0, 72)}`)
+      setPublication(publication)
       setConnectionNote(`Published to the marketplace as “${publication.title}”.`)
     } catch (error) {
       setConnectionNote(`Could not publish this run. ${error instanceof Error ? error.message : ''}`.trim())
     } finally {
       setPublishing(false)
     }
+  }
+
+  function downloadCombinedScreenplay() {
+    if (!finalOutput || typeof window === 'undefined') return
+    const blob = new Blob([finalOutput.combined_screenplay], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${worldName.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase() || 'story'}-screenplay.txt`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function handleRenderVideo() {
+    if (!session?.id || assemblingVideo || !isSimulationTerminal || pendingSceneCount > 0) return
+    setAssemblingVideo(true)
+    try {
+      const job = await renderFinalVideo(session.id)
+      setVideoJob(job)
+      setConnectionNote('Video assembly started. Your scene playback remains available while it renders.')
+    } catch (error) {
+      setConnectionNote(`Could not assemble the video. ${error instanceof Error ? error.message : ''}`.trim())
+    } finally {
+      setAssemblingVideo(false)
+    }
+  }
+
+  const playbackSegments = playback?.segments || []
+  const activePlaybackSegment = playbackSegments[playbackIndex] || null
+
+  function advanceStoryPlayback() {
+    if (!playbackSegments.length) return
+    if (playbackIndex >= playbackSegments.length - 1) {
+      setStoryPlaybackActive(false)
+      return
+    }
+    setPlaybackIndex((current) => current + 1)
   }
 
   const agents = useMemo(
@@ -449,6 +543,13 @@ export default function Dashboard({
       })),
     [characters, thinking, tick],
   )
+  const pendingSceneCount = scenes.filter((scene) => isScenePending(scene.status)).length
+  const readySceneCount = scenes.filter((scene) => ['ready_for_frontend', 'published'].includes(scene.status)).length
+  const failedSceneCount = scenes.filter((scene) => scene.status === 'failed').length
+  const isSimulationTerminal = !!session && ['completed', 'stopped'].includes(session.status)
+  const incompleteFinalSceneCount = finalOutput?.incomplete_scene_ids.length || 0
+  const canPublish = !!session && !offlineMode && isSimulationTerminal && pendingSceneCount === 0 && failedSceneCount === 0 && incompleteFinalSceneCount === 0
+  const publishDisabledReason = !session ? 'Waiting for the simulation session.' : offlineMode ? 'Publishing requires the backend connection.' : !isSimulationTerminal ? 'Finish or stop the simulation before publishing.' : failedSceneCount > 0 ? `${failedSceneCount} scene asset ${failedSceneCount === 1 ? 'failed' : 'failed'}; resolve that failure before retrying publication.` : pendingSceneCount > 0 ? `Waiting for ${pendingSceneCount} scene ${pendingSceneCount === 1 ? 'job' : 'jobs'} to finish.` : incompleteFinalSceneCount > 0 ? `Waiting for image and narration from ${incompleteFinalSceneCount} completed scene ${incompleteFinalSceneCount === 1 ? 'job' : 'jobs'}.` : ''
 
   return (
     <main className={`world-shell world-theme-${theme}`}>
@@ -464,7 +565,7 @@ export default function Dashboard({
         <div className="world-actions">
           <span className={`world-status ${active ? '' : 'paused'}`}><i /> {active ? 'SIMULATION RUNNING' : 'SIMULATION PAUSED'} - TICK {tick}</span>
           <button onClick={() => setVoiceOn(!voiceOn)}>{voiceOn ? 'Voice On' : 'Voice Off'}</button>
-          <button onClick={handlePublishSimulation} disabled={!session || offlineMode || publishing}>{publishing ? 'Publishing…' : 'Publish version'}</button>
+          <button onClick={handlePublishSimulation} disabled={!canPublish || publishing} title={publishDisabledReason}>{publishing ? 'Publishing…' : 'Publish version'}</button>
           <button onClick={handleStopSimulation} className="stop-simulation">Stop simulation</button>
         </div>
       </header>
@@ -472,8 +573,8 @@ export default function Dashboard({
       <section className="simulation-stats">
         <div><small>EVENTS SIMULATED</small><strong>{stats.events}</strong></div>
         <div><small>INTENTS UPDATED</small><strong>{stats.updated}</strong></div>
-        <div><small>CHAPTER SIGNALS</small><strong>{stats.relationships}</strong></div>
-        <div><small>MEDIA UPDATES</small><strong>{stats.memories}</strong></div>
+        <div><small>SCENES READY</small><strong>{readySceneCount} / {scenes.length}</strong></div>
+        <div><small>SCENES IN FLIGHT</small><strong>{pendingSceneCount}</strong></div>
       </section>
 
       <div className="world-layout">
@@ -503,21 +604,30 @@ export default function Dashboard({
             <h3>{currentDialogue?.actor || 'No speaker yet'}</h3>
             <p>{currentDialogue?.line || 'Dialogue appears here when screenplay or character events arrive.'}</p>
           </section>
-          <section className="voice-card scene-assets">
-            <small>SCENE MEDIA</small>
-            {sceneMedia.length === 0 ? (
-              <p>Generated panels and narration will appear here as scene jobs complete.</p>
-            ) : sceneMedia.map((media) => media.kind === 'image' ? (
-              // These binary artifacts can be served from the local FastAPI
-              // service or future user-configured object storage, so a native
-              // image element avoids locking the frontend to a static host allowlist.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={media.id} src={mediaUrl(media.uri)} alt="Generated comic scene" />
-            ) : (
-              <audio key={media.id} controls preload="metadata" src={mediaUrl(media.uri)}>
-                Generated scene narration.
-              </audio>
-            ))}
+          <section className="voice-card output-status">
+            <small>FINAL OUTPUTS</small>
+            <h3>{readySceneCount === scenes.length && scenes.length > 0 ? 'Scene set complete' : 'Assembling scene outputs'}</h3>
+            <p>{playback?.segments.length || 0} playable scene {playback?.segments.length === 1 ? 'segment' : 'segments'} · {pendingSceneCount ? `${pendingSceneCount} still rendering` : 'all queued scene work resolved'}</p>
+            {!canPublish && <em>{publishDisabledReason}</em>}
+            {publication && <Link className="published-story-link" href={`/story/published/${encodeURIComponent(publication.slug)}`}>View published story →</Link>}
+            {isSimulationTerminal && finalOutput && <div className="final-output-actions">
+              <button type="button" onClick={downloadCombinedScreenplay} disabled={!finalOutput.combined_screenplay}>Download screenplay</button>
+              <button type="button" onClick={() => { setPlaybackIndex(0); setStoryPlaybackActive(true) }} disabled={!playbackSegments.length}>Play combined story</button>
+              <button type="button" onClick={handleRenderVideo} disabled={assemblingVideo || pendingSceneCount > 0 || incompleteFinalSceneCount > 0 || videoJob?.status === 'running' || videoJob?.status === 'queued'}>{assemblingVideo || videoJob?.status === 'running' || videoJob?.status === 'queued' ? 'Assembling video…' : 'Assemble video'}</button>
+              {videoJob?.status === 'completed' && videoJob.output_uri && <a href={mediaUrl(videoJob.output_uri)} download>Download video</a>}
+              {videoJob?.status === 'unavailable' && <em>{videoJob.error || 'Video is unavailable in this environment; use scene playback.'}</em>}
+              {videoJob?.status === 'failed' && <em>{videoJob.error || 'Video assembly failed.'}</em>}
+            </div>}
+            {isSimulationTerminal && activePlaybackSegment && <section className="combined-story-player" aria-label="Combined scene playback">
+              <div className="combined-story-head"><b>COMBINED STORY PLAYBACK</b><span>Scene {activePlaybackSegment.scene_number} / {playbackSegments.length}</span></div>
+              {/* Artifact hosts vary by deployment; do not force a static Next image host allowlist. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {activePlaybackSegment.image_uri ? <img src={mediaUrl(activePlaybackSegment.image_uri)} alt={`Combined playback scene ${activePlaybackSegment.scene_number}`} /> : <div className="combined-story-empty">This scene is waiting for its comic panel.</div>}
+              <p>{activePlaybackSegment.narration || 'Scene narration is preparing.'}</p>
+              {activePlaybackSegment.audio_uri ? <audio key={activePlaybackSegment.scene_id} controls autoPlay={storyPlaybackActive} src={mediaUrl(activePlaybackSegment.audio_uri)} onEnded={advanceStoryPlayback}>Combined scene narration.</audio> : <button type="button" onClick={advanceStoryPlayback}>Next scene</button>}
+              <div className="combined-story-controls"><button type="button" onClick={() => setPlaybackIndex((current) => Math.max(0, current - 1))} disabled={playbackIndex === 0}>Previous</button><button type="button" onClick={advanceStoryPlayback}>{playbackIndex === playbackSegments.length - 1 ? 'Finish' : 'Next scene'}</button></div>
+            </section>}
+            {isSimulationTerminal && finalOutput && <div className="final-image-bundle"><b>IMAGE BUNDLE · {finalOutput.images.length} PANELS</b>{finalOutput.images.length ? <div>{finalOutput.images.map((image, index) => <a key={`${image.scene_id}-${image.shot_id || index}`} href={mediaUrl(image.uri)} download>Scene {String(image.scene_number).padStart(2, '0')} panel {index + 1}</a>)}</div> : <span>No generated panels are available yet.</span>}</div>}
           </section>
         </aside>
 
@@ -569,6 +679,26 @@ export default function Dashboard({
               </motion.div>
             )}
           </div>
+          <section className="scene-gallery" aria-label="Scene-by-scene generated outputs">
+            <div className="scene-gallery-heading"><div><p className="sim-eyebrow">SCENE OUTPUTS</p><h2>Panels arriving live</h2></div><span>{readySceneCount} complete · {pendingSceneCount} processing</span></div>
+            {scenes.length === 0 ? <p className="timeline-empty">The Showrunner will add each scene here after it commits the resolved state update. Each scene is rendered independently.</p> : <div className="scene-grid">{scenes.map((scene) => {
+              const image = scene.media?.find((media) => media.kind === 'image')
+              const audio = scene.media?.find((media) => media.kind === 'audio')
+              const playbackSegment = playback?.segments.find((segment) => segment.scene_id === scene.scene.scene_id)
+              return <article className={`scene-output ${isScenePending(scene.status) ? 'is-pending' : 'is-ready'}`} key={scene.scene.scene_id}>
+                <div className="scene-output-head"><span>SCENE {String(scene.scene.scene_number).padStart(2, '0')}</span><b>{sceneStatusLabel(scene.status)}</b></div>
+                <h3>{scene.screenplay?.title || scene.scene.summary}</h3>
+                <p>{scene.screenplay?.logline || scene.screenplay?.narration || scene.scene.summary}</p>
+                {image ? <div className="scene-image-wrap">
+                  {/* Artifact hosts vary by deployment; do not force a static Next image host allowlist. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={mediaUrl(image.uri)} alt={`Generated comic panel for scene ${scene.scene.scene_number}`} />
+                </div> : <div className="scene-placeholder"><i /> Comic panel rendering</div>}
+                {audio ? <audio controls preload="metadata" src={mediaUrl(audio.uri)}>Generated scene narration.</audio> : <div className="scene-audio-pending">Narration {scene.status === 'failed' ? 'unavailable' : 'will be added when ready'}</div>}
+                <div className="scene-downloads">{image && <a href={mediaUrl(image.uri)} download>Download panel</a>}{audio && <a href={mediaUrl(audio.uri)} download>Download audio</a>}{playbackSegment && <span>Included in playback</span>}</div>
+              </article>
+            })}</div>}
+          </section>
         </section>
       </div>
     </main>
